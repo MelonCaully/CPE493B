@@ -15,19 +15,25 @@ class WallFollow(Node):
         lidarscan_topic = '/scan'
         drive_topic = '/drive'
 
-        # TODO: create subscribers and publishers
+        # Create subscriber for Lidar scan data
+        self.scan_subscriber = self.create_subscription(LaserScan, lidarscan_topic, self.scan_callback, 10)
 
-        # TODO: set PID gains
-        # self.kp = 
-        # self.kd = 
-        # self.ki = 
+        # Create publisher for drive commands
+        self.drive_publisher = self.create_publisher(AckermannDriveStamped, drive_topic, 10)
 
-        # TODO: store history
-        # self.integral = 
-        # self.prev_error = 
+        # PID gains
+        self.kp = 1.0 # Proportional gain
+        self.kd = 0.0 # Integral gain
+        self.ki = 0.1 # Derivative gain
+
+        # Store history
+        self.integral = 0.0
+        self.prev_error = 0.0
         # self.error = 
 
-        # TODO: store any necessary values you think you'll need
+        # Desired distance from the wall (meters)
+        self.desired_distance = 1.0
+        self.velocity = 1.0 # Desired velocity in m/s
 
     def get_range(self, range_data, angle):
         """
@@ -42,7 +48,12 @@ class WallFollow(Node):
 
         """
 
-        #TODO: implement
+        angle_index = int((angle - range_data.angle_min) / range_data.angle_increment)
+
+        if angle_index < len(range_data.ranges):
+            distance = range_data.ranges[angle_index]
+            if np.isfinite(distance):  # Handle NaN and infinity values
+                return distance
         return 0.0
 
     def get_error(self, range_data, dist):
@@ -57,8 +68,23 @@ class WallFollow(Node):
             error: calculated error
         """
 
-        #TODO:implement
-        return 0.0
+        a = self.get_range(range_data, 60)  # Beam a at 60 degrees
+        b = self.get_range(range_data, 90)  # Beam b at 90 degrees (right side)
+
+        # Calculate alpha (angle between car's x-axis and the wall)
+        theta = np.radians(60)
+        alpha = np.arctan((a * np.cos(theta) - b) / (a * np.sin(theta)))
+
+        # Current distance to the wall (Dt)
+        dt = b * np.cos(alpha)
+
+        # Project future distance to the wall (Dt+1)
+        L = 1.0  # Lookahead distance (you may tune this)
+        dt_plus_1 = dt + L * np.sin(alpha)
+
+        # Calculate the error as the difference between desired and actual distance
+        error = dist - dt_plus_1
+        return error
 
     def pid_control(self, error, velocity):
         """
@@ -71,10 +97,23 @@ class WallFollow(Node):
         Returns:
             None
         """
-        angle = 0.0
-        # TODO: Use kp, ki & kd to implement a PID controller
+        # PID calculations
+        proportional = error
+        self.integral += error
+        derivative = error - self.prev_error
+
+        # Compute the steering angle
+        steering_angle = (self.kp * proportional +
+                          self.ki * self.integral +
+                          self.kd * derivative)
+
+        self.prev_error = error
+
+        # Create and publish the drive message
         drive_msg = AckermannDriveStamped()
-        # TODO: fill in drive message and publish
+        drive_msg.drive.steering_angle = steering_angle
+        drive_msg.drive.speed = velocity
+        self.drive_publisher.publish(drive_msg)
 
     def scan_callback(self, msg):
         """
@@ -86,9 +125,9 @@ class WallFollow(Node):
         Returns:
             None
         """
-        error = 0.0 # TODO: replace with error calculated by get_error()
-        velocity = 0.0 # TODO: calculate desired car velocity based on error
-        self.pid_control(error, velocity) # TODO: actuate the car with PID
+        error = self.get_error(msg, self.desired_distance)
+        velocity = self.velocity
+        self.pid_control(error, velocity) 
 
 
 def main(args=None):
