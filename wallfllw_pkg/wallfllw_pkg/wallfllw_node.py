@@ -1,133 +1,117 @@
+#!/usr/bin/env python3
 import rclpy
 from rclpy.node import Node
 
 import numpy as np
 from sensor_msgs.msg import LaserScan
 from ackermann_msgs.msg import AckermannDriveStamped
+from math import isfinite
+import time
+import atexit
 
 class WallFollow(Node):
-    """ 
-    Implement Wall Following on the car
-    """
     def __init__(self):
         super().__init__('wall_follow_node')
-
         lidarscan_topic = '/scan'
         drive_topic = '/drive'
 
-        # Create subscriber for Lidar scan data
-        self.scan_subscriber = self.create_subscription(LaserScan, lidarscan_topic, self.scan_callback, 10)
+        # Subscribers and publishers
+        self.scan_sub = self.create_subscription(LaserScan, lidarscan_topic, self.scan_callback, 10)
+        self.drive_pub = self.create_publisher(AckermannDriveStamped, drive_topic, 10)
 
-        # Create publisher for drive commands
-        self.drive_publisher = self.create_publisher(AckermannDriveStamped, drive_topic, 10)
+        # PID constants (tune these values)
+        self.kp = 0.5
+        self.ki = 0.01
+        self.kd = 0.0
 
-        # PID gains
-        self.kp = 1.0 # Proportional gain
-        self.kd = 0.0 # Integral gain
-        self.ki = 0.1 # Derivative gain
-
-        # Store history
-        self.integral = 0.0
+        # Initialize state
         self.prev_error = 0.0
-        # self.error = 
-
-        # Desired distance from the wall (meters)
-        self.desired_distance = 1.0
-        self.velocity = 1.0 # Desired velocity in m/s
+        self.integral = 0.0
 
     def get_range(self, range_data, angle):
         """
-        Simple helper to return the corresponding range measurement at a given angle. Make sure you take care of NaNs and infs.
+        Get the range (distance) at a specific angle from the LiDAR scan.
+        Handles NaN and infinity values by returning 0.0 for them.
 
         Args:
-            range_data: single range array from the LiDAR
-            angle: between angle_min and angle_max of the LiDAR
+            range_data: array of LiDAR ranges
+            angle: angle in degrees, relative to the car's forward direction
 
         Returns:
-            range: range measurement in meters at the given angle
-
+            range: distance at the given angle
         """
+        # Convert angle to an index in the range_data array
+        # Assuming a standard LiDAR, where angle_min = -135 and angle_max = 135 degrees
+        angle_min = -135.0
+        angle_max = 135.0
+        num_ranges = len(range_data)
+        
+        # Find the index that corresponds to the desired angle
+        index = int((angle - angle_min) / (angle_max - angle_min) * (num_ranges - 1))
+        
+        # Get the range at the index, handle NaN and inf
+        if index >= 0 and index < num_ranges:
+            range_value = range_data[index]
+            if not np.isfinite(range_value):  # Check for NaN or inf
+                return 0.0
+            return range_value
+        return 0.0  # Return 0 if index is out of bounds
 
-        angle_index = int((angle - range_data.angle_min) / range_data.angle_increment)
-
-        if angle_index < len(range_data.ranges):
-            distance = range_data.ranges[angle_index]
-            if np.isfinite(distance):  # Handle NaN and infinity values
-                return distance
-        return 0.0
-
-    def get_error(self, range_data, dist):
+    def get_error(self, range_data, desired_dist):
         """
-        Calculates the error to the wall. Follow the wall to the left (going counter clockwise in the Levine loop). You potentially will need to use get_range()
+        Calculate the error between the car's current distance to the wall and the desired distance.
 
         Args:
-            range_data: single range array from the LiDAR
-            dist: desired distance to the wall
+            range_data: array of ranges from the LiDAR scan
+            desired_dist: the desired distance to the wall (in meters)
 
         Returns:
-            error: calculated error
+            error: the error term to be used for PID control
         """
+        # Get the ranges 'a' and 'b' from the laser scan
+        a = self.get_range(range_data, 45)
+        b = self.get_range(range_data, 90)
 
-        a = self.get_range(range_data, 60)  # Beam a at 60 degrees
-        b = self.get_range(range_data, 90)  # Beam b at 90 degrees (right side)
-
-        # Calculate alpha (angle between car's x-axis and the wall)
-        theta = np.radians(60)
+        if not (np.isfinite(a) and np.isfinite(b)) or a == 0:
+            return 0.0
+        
+        # Set the angle θ between the two beams (in radians)
+        theta = np.radians(45)  # Example value for θ (can be adjusted)
         alpha = np.arctan((a * np.cos(theta) - b) / (a * np.sin(theta)))
 
-        # Current distance to the wall (Dt)
-        dt = b * np.cos(alpha)
+        # Calculate the current distance to the wall (Dt)
+        Dt = b * np.cos(alpha)
+        Dt_plus_1 = Dt + 1.0 * np.sin(alpha)
 
-        # Project future distance to the wall (Dt+1)
-        L = 1.0  # Lookahead distance (you may tune this)
-        dt_plus_1 = dt + L * np.sin(alpha)
-
-        # Calculate the error as the difference between desired and actual distance
-        error = dist - dt_plus_1
-        return error
+        # Calculate the error as the difference between the desired and actual distance
+        return desired_dist - Dt_plus_1 
 
     def pid_control(self, error, velocity):
-        """
-        Based on the calculated error, publish vehicle control
+        # PID formula
+        derivative = (error - self.prev_error) / 0.1
+        self.integral += error * 0.1
 
-        Args:
-            error: calculated error
-            velocity: desired velocity
-
-        Returns:
-            None
-        """
-        # PID calculations
-        proportional = error
-        self.integral += error
-        derivative = error - self.prev_error
-
-        # Compute the steering angle
-        steering_angle = (self.kp * proportional +
-                          self.ki * self.integral +
-                          self.kd * derivative)
-
+        angle = (self.kp * error) + (self.ki * self.integral) + (self.kd * derivative)
         self.prev_error = error
 
-        # Create and publish the drive message
+        # Create and publish drive message
         drive_msg = AckermannDriveStamped()
-        drive_msg.drive.steering_angle = steering_angle
-        drive_msg.drive.speed = velocity
-        self.drive_publisher.publish(drive_msg)
+        drive_msg.drive.steering_angle = angle
+
+        # Safety adjustment for speed based on proximity to the wall
+        if abs(angle) <= np.radians(10):
+            drive_msg.drive.speed = 1.5
+        elif abs(angle) <= np.radians(20):
+            drive_msg.drive.speed = 1.0
+        else:
+            drive_msg.drive.speed = 0.5  # Slow down if steering sharply
+
+        self.drive_pub.publish(drive_msg)
 
     def scan_callback(self, msg):
-        """
-        Callback function for LaserScan messages. Calculate the error and publish the drive message in this function.
-
-        Args:
-            msg: Incoming LaserScan message
-
-        Returns:
-            None
-        """
-        error = self.get_error(msg, self.desired_distance)
-        velocity = self.velocity
-        self.pid_control(error, velocity) 
+        desired_dist = 1.0  # Desired distance to the wall (e.g., 1 meter)
+        error = self.get_error(msg.ranges, desired_dist)
+        self.pid_control(error, msg.ranges)
 
 
 def main(args=None):
@@ -135,6 +119,10 @@ def main(args=None):
     print("WallFollow Initialized")
     wall_follow_node = WallFollow()
     rclpy.spin(wall_follow_node)
+
+    # Destroy the node explicitly
+    # (optional - otherwise it will be done automatically
+    # when the garbage collector destroys the node object)
     wall_follow_node.destroy_node()
     rclpy.shutdown()
 
