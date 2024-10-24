@@ -82,20 +82,6 @@ def generate_launch_description():
         parameters=[{'robot_description': Command(['xacro ', os.path.join(get_package_share_directory('f1tenth_gym_ros'), 'launch', 'opp_racecar.xacro')])}],
         remappings=[('/robot_description', 'opp_robot_description')]
     )
-    wall_follow_node = Node(
-        package='wallfllw_pkg',
-        executable='wallfllw_node',
-        name='wallfllw_node',
-        output='screen',
-        parameters=[{'use_sim_time': True}]
-    )
-    safety_node = Node(
-        package='safety_pkg',
-        executable='safety_node',
-        name='safety_node',
-        output='screen',
-        parameters=[{'use_sim_time': True}]
-    )
 
     # finalize
     ld.add_action(rviz_node)
@@ -105,8 +91,5 @@ def generate_launch_description():
     ld.add_action(ego_robot_publisher)
     if has_opp:
         ld.add_action(opp_robot_publisher)
-
-    ld.add_action(wall_follow_node)
-    ld.add_action(safety_node)
-
+    
     return ld

@@ -5,9 +5,6 @@ from rclpy.node import Node
 import numpy as np
 from sensor_msgs.msg import LaserScan
 from ackermann_msgs.msg import AckermannDriveStamped
-from math import isfinite
-import time
-import atexit
 
 class WallFollow(Node):
     def __init__(self):
@@ -20,13 +17,24 @@ class WallFollow(Node):
         self.drive_pub = self.create_publisher(AckermannDriveStamped, drive_topic, 10)
 
         # PID constants (tune these values)
-        self.kp = 0.5
-        self.ki = 0.01
-        self.kd = 0.0
+        self.kp = 1.0
+        self.ki = 0.001
+        self.kd = 0.005
 
         # Initialize state
         self.prev_error = 0.0
         self.integral = 0.0
+        self.error = 0.0
+        self.velocity = 0.0
+        self.del_time = 0.0
+        seconds, nanoseconds = self.get_clock().now().seconds_nanoseconds()
+        self.prev_time = seconds + nanoseconds / 1e9
+
+        self.desired_distance = 1.2
+        self.velocity = 1.5
+
+        self.angle_a = np.radians(45)
+        self.angle_b = np.radians(90)
 
     def get_range(self, range_data, angle):
         """
@@ -40,24 +48,19 @@ class WallFollow(Node):
         Returns:
             range: distance at the given angle
         """
-        # Convert angle to an index in the range_data array
-        # Assuming a standard LiDAR, where angle_min = -135 and angle_max = 135 degrees
-        angle_min = -135.0
-        angle_max = 135.0
-        num_ranges = len(range_data)
-        
-        # Find the index that corresponds to the desired angle
-        index = int((angle - angle_min) / (angle_max - angle_min) * (num_ranges - 1))
-        
-        # Get the range at the index, handle NaN and inf
-        if index >= 0 and index < num_ranges:
-            range_value = range_data[index]
-            if not np.isfinite(range_value):  # Check for NaN or inf
-                return 0.0
-            return range_value
-        return 0.0  # Return 0 if index is out of bounds
+        b_index = int((np.radians(90) - range_data.angle_min) / range_data.angle_increment)
 
-    def get_error(self, range_data, desired_dist):
+        if range_data.angle_min > np.radians(45):
+            self.angle_a = range_data.angle_min
+            a_index = 0
+        else:
+            a_index = int((np.radians(45.0) - range_data.angle_min)) / range_data.angle_increment
+
+        a_range = range_data.ranges[a_index] if not np.isinf(range_data.ranges[a_index]) and not np.isnan(range_data.ranges[a_index])
+        b_range = range_data.ranges[b_index] if not np.isinf(range_data.ranges[b_index]) and not np.isnan(range_data.ranges[b_index])
+        return a_range, b_range
+
+    def get_error(self, range_data, dist):
         """
         Calculate the error between the car's current distance to the wall and the desired distance.
 
@@ -68,50 +71,50 @@ class WallFollow(Node):
         Returns:
             error: the error term to be used for PID control
         """
-        # Get the ranges 'a' and 'b' from the laser scan
-        a = self.get_range(range_data, 45)
-        b = self.get_range(range_data, 90)
+        a_angle = self.angle_a
+        b_angle = self.angle_b
 
-        if not (np.isfinite(a) and np.isfinite(b)) or a == 0:
-            return 0.0
+        a_range, _ = self.get_range(range_data, a_angle)
+        _, b_range = self.get_range(range_data, b_angle)
         
-        # Set the angle θ between the two beams (in radians)
-        theta = np.radians(45)  # Example value for θ (can be adjusted)
-        alpha = np.arctan((a * np.cos(theta) - b) / (a * np.sin(theta)))
+        theta = b_angle - a_angle
+        alpha = np.arctan((a_range * np.cos(theta) - b_range)) / (a_range * np.sin(theta))
 
         # Calculate the current distance to the wall (Dt)
-        Dt = b * np.cos(alpha)
+        Dt = b_range * np.cos(alpha)
         Dt_plus_1 = Dt + 1.0 * np.sin(alpha)
 
         # Calculate the error as the difference between the desired and actual distance
-        return desired_dist - Dt_plus_1 
+        return dist - Dt_plus_1 
 
     def pid_control(self, error, velocity):
+        angle = 0.0
         # PID formula
-        derivative = (error - self.prev_error) / 0.1
-        self.integral += error * 0.1
+        seconds, nanoseconds = self.get_clock().now().seconds_nanoseconds()
+        current_time = seconds + nanoseconds / 1e9
+        del_time = current_time - self.prev_time
+        self.integral += self.prev_error + del_time
+        derivative = (error - self.prev_error) / del_time
+        angle = -(self.kp * error + self.ki * self.integral + self.kd * derivative)
+        self.prev_time = current_time
 
-        angle = (self.kp * error) + (self.ki * self.integral) + (self.kd * derivative)
-        self.prev_error = error
+        # Safety adjustment for speed based on proximity to the wall
+        if abs(angle) <= np.radians(10):
+            velocity = 1.5
+        elif abs(angle) <= np.radians(20):
+            velocity = 1.0
+        else:
+            velocity = 0.5
 
         # Create and publish drive message
         drive_msg = AckermannDriveStamped()
         drive_msg.drive.steering_angle = angle
-
-        # Safety adjustment for speed based on proximity to the wall
-        if abs(angle) <= np.radians(10):
-            drive_msg.drive.speed = 1.5
-        elif abs(angle) <= np.radians(20):
-            drive_msg.drive.speed = 1.0
-        else:
-            drive_msg.drive.speed = 0.5  # Slow down if steering sharply
-
+        drive_msg.drive.speed = velocity
         self.drive_pub.publish(drive_msg)
 
     def scan_callback(self, msg):
-        desired_dist = 1.0  # Desired distance to the wall (e.g., 1 meter)
-        error = self.get_error(msg.ranges, desired_dist)
-        self.pid_control(error, msg.ranges)
+        error = self.get_error(msg, self.desired_distance)
+        self.pid_control(error, self.velocity)
 
 
 def main(args=None):
@@ -119,10 +122,6 @@ def main(args=None):
     print("WallFollow Initialized")
     wall_follow_node = WallFollow()
     rclpy.spin(wall_follow_node)
-
-    # Destroy the node explicitly
-    # (optional - otherwise it will be done automatically
-    # when the garbage collector destroys the node object)
     wall_follow_node.destroy_node()
     rclpy.shutdown()
 
