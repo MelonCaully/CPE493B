@@ -48,16 +48,17 @@ class WallFollow(Node):
         Returns:
             range: distance at the given angle
         """
-        b_index = int((np.radians(90) - range_data.angle_min) / range_data.angle_increment)
+        b_index = int((np.radians(90.0) - range_data.angle_min) / range_data.angle_increment)
 
-        if range_data.angle_min > np.radians(45):
+        if range_data.angle_min > np.radians(45.0):
             self.angle_a = range_data.angle_min
             a_index = 0
         else:
-            a_index = int((np.radians(45.0) - range_data.angle_min)) / range_data.angle_increment
+            a_index = int((np.radians(45.0) - range_data.angle_min) / range_data.angle_increment)
 
-        a_range = range_data.ranges[a_index] if not np.isinf(range_data.ranges[a_index]) and not np.isnan(range_data.ranges[a_index])
-        b_range = range_data.ranges[b_index] if not np.isinf(range_data.ranges[b_index]) and not np.isnan(range_data.ranges[b_index])
+        a_range = range_data.ranges[a_index] if not np.isinf(range_data.ranges[a_index]) and not np.isnan(range_data.ranges[a_index]) else 0.0
+        b_range = range_data.ranges[b_index] if not np.isinf(range_data.ranges[b_index]) and not np.isnan(range_data.ranges[b_index]) else 0.0
+
         return a_range, b_range
 
     def get_error(self, range_data, dist):
@@ -82,26 +83,30 @@ class WallFollow(Node):
 
         # Calculate the current distance to the wall (Dt)
         Dt = b_range * np.cos(alpha)
-        Dt_plus_1 = Dt + 1.0 * np.sin(alpha)
+        Dt_plus_1 = Dt + self.desired_distance * np.sin(alpha)
+        error = dist - Dt_plus_1
 
         # Calculate the error as the difference between the desired and actual distance
-        return dist - Dt_plus_1 
+        return error 
 
     def pid_control(self, error, velocity):
+        
         angle = 0.0
         # PID formula
         seconds, nanoseconds = self.get_clock().now().seconds_nanoseconds()
         current_time = seconds + nanoseconds / 1e9
         del_time = current_time - self.prev_time
+
         self.integral += self.prev_error + del_time
         derivative = (error - self.prev_error) / del_time
+
         angle = -(self.kp * error + self.ki * self.integral + self.kd * derivative)
         self.prev_time = current_time
 
         # Safety adjustment for speed based on proximity to the wall
-        if abs(angle) <= np.radians(10):
+        if abs(angle) < np.radians(10):
             velocity = 1.5
-        elif abs(angle) <= np.radians(20):
+        elif abs(angle) < np.radians(20):
             velocity = 1.0
         else:
             velocity = 0.5
