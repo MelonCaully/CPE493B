@@ -30,7 +30,7 @@ class ReactiveFollowGap(Node):
         """
         ranges = np.array(ranges)
         smoothed_ranges = np.convolve(ranges, np.ones(5)/5, mode = 'valid')
-        proc_ranges = np.where(smoothed_ranges > 10, 5, smoothed_ranges)
+        proc_ranges = np.where(smoothed_ranges > 20, 5, smoothed_ranges)
         return proc_ranges
 
     def find_max_gap(self, free_space_ranges):
@@ -80,7 +80,7 @@ class ReactiveFollowGap(Node):
     
     def calculate_steering_angle(self, best_point_index, total_points):
 
-        field_of_view = 270.0
+        field_of_view = 95.0
 
         angle_per_point = field_of_view / total_points
 
@@ -129,7 +129,7 @@ class ReactiveFollowGap(Node):
         
         if front_distance > 6.0 and front_distance < 20.0:
             speed = 6.0
-        elif front_distance <= 6.0 and front_distance > 3.0:
+        elif front_distance <= 6.0 and front_distance > 2.7:
             speed = 2.7
         else: 
             speed = 1.0
