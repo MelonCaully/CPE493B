@@ -21,7 +21,7 @@ class PurePursuit(Node):
         self.drive_publisher = self.create_publisher(AckermannDriveStamped, '/drive', 10)
         self.declare_parameter('lookahead_distance', 10)
         self.lookahead_distance = self.get_parameter('lookahead_distance').value
-        self.waypoints = self.load_waypoints('/path/to/waypoints.csv')
+        self.waypoints = self.load_waypoints('home/meloncaully/sim_ws/src/pure_pursuit/pure_pursuit/data.csv')
 
     def load_waypoints(self, file_path):
         waypoints = []
