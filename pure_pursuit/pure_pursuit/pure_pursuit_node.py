@@ -1,76 +1,97 @@
 #!/usr/bin/env python3
 import rclpy
-import csv
 from rclpy.node import Node
-
 import numpy as np
-from geometry_msgs.msg import PoseStamped
+import csv
+
 from sensor_msgs.msg import LaserScan
 from ackermann_msgs.msg import AckermannDriveStamped, AckermannDrive
-# TODO CHECK: include needed ROS msg type headers and libraries
+from geometry_msgs.msg import PoseStamped
+from visualization_msgs.msg import Marker, MarkerArray
 
 class PurePursuit(Node):
-    """ 
-    Implement Pure Pursuit on the car
-    This is just a template, you are free to implement your own node!
-    """
     def __init__(self):
         super().__init__('pure_pursuit_node')
-        # TODO: create ROS subscribers and publishers
-        self.pose_subscriber = self.create_subscription(PoseStamped, '/car_pose', self.pose_callback, 10)
-        self.drive_publisher = self.create_publisher(AckermannDriveStamped, '/drive', 10)
-        self.declare_parameter('lookahead_distance', 10)
-        self.lookahead_distance = self.get_parameter('lookahead_distance').value
-        self.waypoints = self.load_waypoints('home/meloncaully/sim_ws/src/pure_pursuit/pure_pursuit/data.csv')
+        
+        # ROS Parameters
+        self.declare_parameter("lookahead_distance", 1.5)
+        self.declare_parameter("wheelbase", 0.325)
+        self.declare_parameter("waypoints_file", "data.csv")
+        
+        self.lookahead_distance = self.get_parameter("lookahead_distance").value
+        self.wheelbase = self.get_parameter("wheelbase").value
+        self.waypoints_file = self.get_parameter("waypoints_file").value
+        
+        # Load waypoints from file
+        self.waypoints = self.load_waypoints(self.waypoints_file)
+        
+        # Publishers and Subscribers
+        self.pose_sub = self.create_subscription(PoseStamped, '/pose', self.pose_callback, 10)
+        self.drive_pub = self.create_publisher(AckermannDriveStamped, '/drive', 10)
+        self.waypoints_pub = self.create_publisher(MarkerArray, '/visualization_marker_array', 10)
+        
+        # Visualization
+        self.visualize_waypoints()
 
-    def load_waypoints(self, file_path):
+    def load_waypoints(self, filename):
         waypoints = []
-        with open(file_path, 'r') as csvfile:
-            reader = csv.reader(csvfile)
+        with open(filename, 'r') as f:
+            reader = csv.reader(f)
             for row in reader:
-                waypoints.append([float(row[0]), float(row[1])])
+                waypoints.append((float(row[0]), float(row[1]), float(row[2])))  # Load x, y, z
+        self.get_logger().info(f"Loaded {len(waypoints)} waypoints.")
         return waypoints
 
+    def visualize_waypoints(self):
+        marker_array = MarkerArray()
+        for i, (x, y, z) in enumerate(self.waypoints):
+            marker = Marker()
+            marker.header.frame_id = "map"  # Ensure this matches your setup
+            marker.header.stamp = self.get_clock().now().to_msg()
+            
+            marker.type = Marker.SPHERE
+            marker.action = Marker.ADD
+            
+            # Marker scale 
+            marker.scale.x = 0.1  # Adjust marker size as needed
+            marker.scale.y = 0.1
+            marker.scale.z = 0.1
+            
+            # Marker color 
+            marker.color.r = 1.0
+            marker.color.g = 0.0
+            marker.color.b = 0.0
+            marker.color.a = 1.0
+            
+            # Set position with 3D coordinates
+            marker.pose.position.x = x
+            marker.pose.position.y = y
+            marker.pose.position.z = 0.0
+            
+            marker.pose.orientation.x = 0.0
+            marker.pose.orientation.y = 0.0
+            marker.pose.orientation.z = 0.0
+            marker.pose.orientation.w = 1.0
+            
+            marker.id = i
+            marker_array.markers.append(marker)
+        
+        # Publish markers
+        self.waypoints_pub.publish(marker_array)
+
+
     def pose_callback(self, pose_msg):
-        # TODO: find the current waypoint to track using methods mentioned in lecture
-        x, y = pose_msg.pose.position.x, pose_msg.pose.position.y
+        x = 0
 
-        goal = None
-        min_distance = float('inf')
-        for waypoint in self.waypoints:
-            distance = np.sqrt((waypoint[0] - x)**2 + (waypoint[1] - y)**2)
-            if distance >= self.lookahead_distance and distance < min_distance:
-                min_distance = distance
-                goal = waypoint
-
-        if not goal:
-            self.get_logger().warn('No valid waypoint found within lookahead distance.')
-            return
-
-        # TODO: transform goal point to vehicle frame of reference
-        dx = goal[0] - x
-        dy = goal[1] - y
-        theta = np.arctan2(dy, dx) - pose_msg.pose.orientation.z  # Assuming 2D
-
-        # TODO: calculate curvature/steering angle
-        curvature = 2 * abs(dy) / (self.lookahead_distance**2)
-        steering_angle = np.clip(np.arctan(curvature), -0.4189, 0.4189)  # ~24 degrees max
-
-        # TODO: publish drive message, don't forget to limit the steering angle.
-        drive_msg = AckermannDriveStamped()
-        drive_msg.drive.steering_angle = steering_angle
-        drive_msg.drive.speed = 1.0  # Adjust speed as necessary
-        self.drive_publisher.publish(drive_msg)
+    def find_goal_waypoint(self, current_x, current_y):
+        x = 0
 
 def main(args=None):
     rclpy.init(args=args)
-    print("PurePursuit Initialized")
     pure_pursuit_node = PurePursuit()
     rclpy.spin(pure_pursuit_node)
-
     pure_pursuit_node.destroy_node()
     rclpy.shutdown()
-
 
 if __name__ == '__main__':
     main()
