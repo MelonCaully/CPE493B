@@ -3,9 +3,8 @@ import rclpy
 from rclpy.node import Node
 import numpy as np
 import csv
-
 from sensor_msgs.msg import LaserScan
-from ackermann_msgs.msg import AckermannDriveStamped, AckermannDrive
+from ackermann_msgs.msg import AckermannDriveStamped
 from geometry_msgs.msg import PoseStamped
 from visualization_msgs.msg import Marker, MarkerArray
 
@@ -79,12 +78,65 @@ class PurePursuit(Node):
         # Publish markers
         self.waypoints_pub.publish(marker_array)
 
-
     def pose_callback(self, pose_msg):
-        x = 0
+        # Extract the current pose of the vehicle
+        x_vehicle = pose_msg.pose.position.x
+        y_vehicle = pose_msg.pose.position.y
+        theta_vehicle = self.euler_from_quaternion(pose_msg.pose.orientation)
 
-    def find_goal_waypoint(self, current_x, current_y):
-        x = 0
+        # Find the closest waypoint within the lookahead distance
+        goal_point = self.find_closest_waypoint(x_vehicle, y_vehicle)
+
+        # Transform goal point to vehicle frame of reference
+        delta_x = goal_point[0] - x_vehicle
+        delta_y = goal_point[1] - y_vehicle
+        distance = np.sqrt(delta_x**2 + delta_y**2)
+        angle_to_goal = np.arctan2(delta_y, delta_x) - theta_vehicle
+
+        # Calculate the steering angle using Pure Pursuit
+        curvature = 2 * np.sin(angle_to_goal) / distance
+        steering_angle = np.arctan(self.wheelbase * curvature)
+
+        # Publish the drive message
+        drive_msg = AckermannDriveStamped()
+        drive_msg.header.stamp = self.get_clock().now().to_msg()
+        drive_msg.drive.steering_angle = np.clip(steering_angle, -0.418, 0.418)  # Steering angle limits
+        drive_msg.drive.speed = 1.0  # You can adjust this based on the desired speed
+        self.drive_pub.publish(drive_msg)
+
+    def find_closest_waypoint(self, x_vehicle, y_vehicle):
+        # Find the closest waypoint within the lookahead distance
+        closest_distance = float('inf')
+        closest_waypoint = None
+        for wp in self.waypoints:
+            x_wp, y_wp, _ = wp
+            distance = np.sqrt((x_vehicle - x_wp)**2 + (y_vehicle - y_wp)**2)
+            if distance < closest_distance and distance <= self.lookahead_distance:
+                closest_distance = distance
+                closest_waypoint = wp
+        return closest_waypoint
+
+    def euler_from_quaternion(self, quaternion):
+        # Convert quaternion to Euler angles (roll, pitch, yaw)
+        x = quaternion.x
+        y = quaternion.y
+        z = quaternion.z
+        w = quaternion.w
+
+        t0 = +2.0 * (w * x + y * z)
+        t1 = +1.0 - 2.0 * (x * x + y * y)
+        roll_x = np.atan2(t0, t1)
+
+        t2 = +2.0 * (w * y - z * x)
+        t2 = +1.0 if t2 > +1.0 else t2
+        t2 = -1.0 if t2 < -1.0 else t2
+        pitch_y = np.asin(t2)
+
+        t3 = +2.0 * (w * z + x * y)
+        t4 = +1.0 - 2.0 * (y * y + z * z)
+        yaw_z = np.atan2(t3, t4)
+
+        return yaw_z  # We only need yaw for pure pursuit
 
 def main(args=None):
     rclpy.init(args=args)
