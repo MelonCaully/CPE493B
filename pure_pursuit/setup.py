@@ -1,6 +1,6 @@
 from setuptools import setup
 
-package_name = 'pure_pursuit'
+package_name = 'pure_pursuit_pkg'
 
 setup(
     name=package_name,
@@ -13,14 +13,14 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='meloncaully',
-    maintainer_email='maloneingham@gmail.com',
-    description='TODO: Package description',
-    license='TODO: License declaration',
+    maintainer='md0174',
+    maintainer_email='md0174@mix.wvu.edu',
+    description='Pure pursuit',
+    license='Apache License 2.0',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'pursuit_node = pure_pursuit.pure_pursuit_node:main'
+            'pure_pursuit = pure_pursuit_pkg.pure_pursuit:main'
         ],
     },
 )
