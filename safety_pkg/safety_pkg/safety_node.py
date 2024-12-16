@@ -15,7 +15,7 @@ class SafetyNode(Node):
         super().__init__('safety_node')
 
         # Publisher to /drive topic
-        self.publisher_ = self.create_publisher(AckermannDriveStamped, 'drive', 10)
+        self.publisher_ = self.create_publisher(AckermannDriveStamped, 'safety_node/drive', 10)
 
         # Subscribers to /scan and /ego_racecar/odom topics
         self.scan_subscription = self.create_subscription(LaserScan,'scan',self.scan_callback,10)

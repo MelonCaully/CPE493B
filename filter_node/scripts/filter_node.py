@@ -15,15 +15,15 @@ class FilterNode(Node):
             self.pure_pursuit_callback, 
             10
         )
-        self.obstacle_avoidance_sub = self.create_subscription(
+        self.braking = self.create_subscription(
             AckermannDriveStamped, 
-            '/obstacle_avoidance/drive', 
+            'safety_node/drive', 
             self.obstacle_avoidance_callback, 
             10
         )
         self.gap_follow_sub = self.create_subscription(
             AckermannDriveStamped, 
-            '/gap_follow/drive', 
+            'gap_follow/drive', 
             self.gap_follow_callback, 
             10
         )

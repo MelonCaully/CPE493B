@@ -26,7 +26,7 @@ class PurePursuit(Node):
         
         # Publishers and Subscribers
         self.pose_sub = self.create_subscription(PoseStamped, '/pose', self.pose_callback, 10)
-        self.drive_pub = self.create_publisher(AckermannDriveStamped, '/drive', 10)
+        self.drive_pub = self.create_publisher(AckermannDriveStamped, 'pure_pursuit/drive', 10)
         self.waypoints_pub = self.create_publisher(MarkerArray, '/visualization_marker_array', 10)
         
         # Visualization

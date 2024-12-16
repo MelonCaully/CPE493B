@@ -15,7 +15,7 @@ class ReactiveFollowGap(Node):
         super().__init__('reactive_node')
         # Topics & Subs, Pubs
         lidarscan_topic = '/scan'
-        drive_topic = '/drive'
+        drive_topic = 'gap_follow/drive'
 
         # TODO: Subscribe to LIDAR
         self.lidar_subscriptions = self.create_subscription(LaserScan, lidarscan_topic, self.lidar_callback, 10)
