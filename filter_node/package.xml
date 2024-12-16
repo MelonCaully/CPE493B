@@ -1,17 +1,14 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>pure_pursuit_pkg</name>
+  <name>filter_node</name>
   <version>0.0.0</version>
-  <description>Pure pursuit</description>
-  <maintainer email="md0174@mix.wvu.edu">md0174</maintainer>
-  <license>Apache License 2.0</license>
-  
+  <description>filter_node</description>
+  <maintainer email="tjr00005@mix.wvu.edu">tyler</maintainer>
+  <license>TODO: License declaration</license>
+
+  <depend>rclpy</depend>
   <depend>ackermann_msgs</depend>
-  <depend>nav_msgs</depend>
-  <depend>geometry_msgs</depend>
-  <depend>visualization_msgs</depend>
-  <depend>ament_index_python</depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
