@@ -53,24 +53,20 @@ class FilterNode(Node):
         self.publish_drive_command()
 
     def publish_drive_command(self):
-        # Priority logic: Pure Pursuit > Obstacle Avoidance > Gap Follow
-        if self.obstacle_avoidance_msg and should_take_control(self.obstacle_avoidance_msg):
+        # Priority logic: Pure Pursuit > Gap Follow > Emergency Braking
+        if self.obstacle_avoidance_msg:
             self.get_logger().info('Emergency Braking is in control')
             self.drive_pub.publish(self.obstacle_avoidance_msg)
-        elif self.gap_follow_msg and should_take_control(self.gap_follow_msg):
+        elif self.gap_follow_msg:
             self.get_logger().info('Gap Follow is in control')
             self.drive_pub.publish(self.gap_follow_msg)
         elif self.pure_pursuit_msg:
             self.get_logger().info('Pure Pursuit is in control')
             self.drive_pub.publish(self.pure_pursuit_msg)
 
-def should_take_control(msg):
-    # Example logic: Use obstacle avoidance or gap follow only if critical
-    # Replace with actual conditions relevant to your system
-    return msg.speed < 0.5  # Example: Low speed implies taking control is critical
-
 def main(args=None):
     rclpy.init(args=args)
+    print('Filter Node Initialized')
     filter_node = FilterNode()
     rclpy.spin(filter_node)
     filter_node.destroy_node()
