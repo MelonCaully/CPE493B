@@ -42,6 +42,8 @@ class FilterNode(Node):
         self.braking_msg = None
         self.gap_follow_msg = None
 
+        self.gap_follow_speed = 0.0
+
     def pure_pursuit_callback(self, msg):
         self.pure_pursuit_msg = msg
         self.publish_drive_command()
@@ -52,30 +54,17 @@ class FilterNode(Node):
 
     def gap_follow_callback(self, msg):
         self.gap_follow_msg = msg
+        self.gap_follow_speed = msg.drive.speed
         self.publish_drive_command()
-    
-    def get_speed(self, incoming_msg):
-        incoming_msg = AckermannDriveStamped()
-        msg = incoming_msg
-
-        if msg is None:
-            return 1.5  # Default speed when no message is received
-        if msg.drive.speed is not None:
-            return float(msg.drive.speed)
-        else:
-            return 1.5
         
     def publish_drive_command(self):
         # Priority logic: Pure Pursuit > Gap Follow > Emergency Braking
-        # Publish the first available message based on priority
-
-        # If Pure Pursuit message is available, use it
-        if self.braking_msg is not None and self.get_speed(self.gap_follow_msg) < 1.0:
+        if self.braking_msg is not None and self.gap_follow_speed < 1.0:
             self.get_logger().info('Emergency Braking is in control')
             self.drive_pub.publish(self.braking_msg)
 
         # If Gap Follow message is available and Pure Pursuit message is not
-        elif self.gap_follow_msg is not None and self.get_speed(self.gap_follow_msg) < 1.5:
+        elif self.gap_follow_msg is not None and self.gap_follow_speed < 1.5:            
             self.get_logger().info('Gap Follow is in control')
             self.drive_pub.publish(self.gap_follow_msg)
 

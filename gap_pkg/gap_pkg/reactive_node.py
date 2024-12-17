@@ -30,8 +30,8 @@ class ReactiveFollowGap(Node):
             2.Rejecting high values (eg. > 3m)
         """
         ranges = np.array(ranges)
-        smoothed_ranges = np.convolve(ranges, np.ones(5)/5, mode = 'valid')
-        proc_ranges = np.where(smoothed_ranges > 20, 5, smoothed_ranges)
+        smoothed_ranges = np.convolve(ranges, np.ones(10)/10, mode = 'valid')
+        proc_ranges = np.where(smoothed_ranges > 20, 10, smoothed_ranges)
         return proc_ranges
 
     def find_max_gap(self, free_space_ranges):
@@ -95,7 +95,7 @@ class ReactiveFollowGap(Node):
         """ Process each LiDAR scan as per the Follow Gap algorithm & publish an AckermannDriveStamped Message
         """
         ranges = data.ranges
-        bubble_radius = 1.0
+        bubble_radius = 0.5
         
         # TODO:
         #Find closest point to LiDAR
@@ -126,11 +126,11 @@ class ReactiveFollowGap(Node):
 
         curvature = abs(left_distance - right_distance) / (left_distance + right_distance + 0.001)  # avoid division by zero
         # print("curvature: ", curvature)
-        # print("front_distance: ", front_distance)
+        print("front_distance: ", front_distance)
         
-        if front_distance > 3.0 and front_distance < 20.0:
+        if front_distance > 2.5 and front_distance < 20.0:
             speed = 1.5
-        elif front_distance <= 3.0 and front_distance > 1.5:
+        elif front_distance <= 2.5 and front_distance > 1.5:
             speed = 1.0
         else: 
             speed = 0.5
