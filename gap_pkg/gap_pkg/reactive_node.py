@@ -126,7 +126,7 @@ class ReactiveFollowGap(Node):
 
         curvature = abs(left_distance - right_distance) / (left_distance + right_distance + 0.001)  # avoid division by zero
         # print("curvature: ", curvature)
-        print("front_distance: ", front_distance)
+        # print("front_distance: ", front_distance)
         
         if front_distance > 2.5 and front_distance < 20.0:
             speed = 1.5

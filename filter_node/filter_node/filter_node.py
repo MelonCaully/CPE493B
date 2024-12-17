@@ -65,24 +65,26 @@ class FilterNode(Node):
         
     def publish_drive_command(self):
         # Priority logic: Pure Pursuit > Gap Follow > Emergency Braking
-        if self.braking_msg is not None and self.braking_speed < 1.0:
-            self.get_logger().info('Emergency Braking is in control')
-            self.braking_msg
-            self.drive_pub.publish(self.braking_msg)
+        if self.braking_msg is None and self.gap_follow_msg is None and self.pure_pursuit_msg is None:
+            self.get_logger().info('No messages recieved yet')
+            return
 
-        # If Gap Follow message is available and Pure Pursuit message is not
-        elif self.gap_follow_msg is not None and self.gap_follow_speed < 1.5:            
+        if self.braking_speed < 1.0 and self.gap_follow_speed < 1.5:
+            self.get_logger().info('Emergency Braking is in control')
+
+            msg = AckermannDriveStamped()
+            msg.drive.speed = self.braking_speed
+            msg.drive.steering_angle = self.gap_follow_steering_angle
+
+            self.drive_pub.publish(msg)
+
+        elif self.gap_follow_speed < 1.5:            
             self.get_logger().info('Gap Follow is in control')
             self.drive_pub.publish(self.gap_follow_msg)
 
-        # If Emergency Braking message is available and others are not
-        elif self.pure_pursuit_msg is not None:
+        else:
             self.get_logger().info('Pure Pursuit is in control')
             self.drive_pub.publish(self.pure_pursuit_msg)
-
-        else:
-            # If no messages are available, don't publish anything
-            self.get_logger().info('No messages received yet')
 
 
 def main(args=None):

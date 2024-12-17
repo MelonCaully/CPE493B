@@ -14,3 +14,8 @@ Any order for these:
 
 Last:
 5. ros2 run filter_node filter_node
+
+Troubleshotting:
+- Sometimes, if you get an error that says "TypeError" the fix is to run it again lol.
+- In 'CPE493B/f1tenth_gym_ros/config/sim.yaml', make sure the `map_path` varaible is going to the correct directory
+    ie. `/Path/To/Director/project/src/CPE493B/f1tenth_gym_ros/maps/[desired_map]`
