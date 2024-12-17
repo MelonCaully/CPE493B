@@ -43,7 +43,7 @@ class PurePursuit(Node):
             10
         )
 
-        self.min_lookahead = 1.5
+        self.min_lookahead = 1.25
         self.max_lookahead = 8
         self.current_waypoint_idx = 0
         self.markers = self.load_markers(csv_path=os.getcwd()+'/src/CPE493B/pure_pursuit/data.csv')
@@ -78,6 +78,7 @@ class PurePursuit(Node):
             marker.color = ColorRGBA(r=0.0, g=1.0, b=0.0, a=1.0)
             marker_array.markers.append(marker)
         self.marker_publisher.publish(marker_array)
+        self.get_logger().info('Array Published')
 
     
     def find_goal_waypoint(self, curr_x, curr_y):
@@ -138,9 +139,10 @@ class PurePursuit(Node):
 
         # TODO: publish drive message, don't forget to limit the steering angle.
         drive_msg = AckermannDriveStamped()
-        drive_msg.drive.steering_angle = np.clip(steering_angle, -.3, .3)
-        drive_msg.drive.speed = 3.0  # Adjust speed as needed
+        drive_msg.drive.steering_angle = np.clip(steering_angle, -.1, .1)
+        drive_msg.drive.speed = 4.0  # Adjust speed as needed
         self.drive_publisher.publish(drive_msg)
+        
 
 
 def main(args=None):
