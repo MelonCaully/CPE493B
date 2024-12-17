@@ -54,32 +54,36 @@ class FilterNode(Node):
         self.gap_follow_msg = msg
         self.publish_drive_command()
     
-    def get_speed(self, msg):
+    def get_speed(self, incoming_msg):
+        incoming_msg = AckermannDriveStamped()
+        msg = incoming_msg
+
         if msg is None:
-            return 6.0  # Default speed when no message is received
+            return 1.5  # Default speed when no message is received
         if msg.drive.speed is not None:
             return float(msg.drive.speed)
         else:
-            return 6.0
-
+            return 1.5
+        
     def publish_drive_command(self):
         # Priority logic: Pure Pursuit > Gap Follow > Emergency Braking
         # Publish the first available message based on priority
 
         # If Pure Pursuit message is available, use it
-        if self.pure_pursuit_msg is not None:
-            self.get_logger().info('Pure Pursuit is in control')
-            self.drive_pub.publish(self.pure_pursuit_msg)
+        if self.braking_msg is not None and self.get_speed(self.gap_follow_msg) < 1.0:
+            self.get_logger().info('Emergency Braking is in control')
+            self.drive_pub.publish(self.braking_msg)
 
         # If Gap Follow message is available and Pure Pursuit message is not
-        elif self.gap_follow_msg is not None:
+        elif self.gap_follow_msg is not None and self.get_speed(self.gap_follow_msg) < 1.5:
             self.get_logger().info('Gap Follow is in control')
             self.drive_pub.publish(self.gap_follow_msg)
 
         # If Emergency Braking message is available and others are not
-        elif self.braking_msg is not None:
-            self.get_logger().info('Emergency Braking is in control')
-            self.drive_pub.publish(self.braking_msg)
+        elif self.pure_pursuit_msg is not None:
+            self.get_logger().info('Pure Pursuit is in control')
+            self.drive_pub.publish(self.pure_pursuit_msg)
+
         else:
             # If no messages are available, don't publish anything
             self.get_logger().info('No messages received yet')

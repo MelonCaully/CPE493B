@@ -87,7 +87,7 @@ class ReactiveFollowGap(Node):
 
         angle_from_center = (best_point_index - total_points / 2) * angle_per_point
 
-        steering_angle = math.radians(angle_from_center) * .95
+        steering_angle = math.radians(angle_from_center)
 
         return steering_angle
 
@@ -95,7 +95,7 @@ class ReactiveFollowGap(Node):
         """ Process each LiDAR scan as per the Follow Gap algorithm & publish an AckermannDriveStamped Message
         """
         ranges = data.ranges
-        bubble_radius = 2.0
+        bubble_radius = 1.0
         
         # TODO:
         #Find closest point to LiDAR
@@ -129,11 +129,11 @@ class ReactiveFollowGap(Node):
         # print("front_distance: ", front_distance)
         
         if front_distance > 3.0 and front_distance < 20.0:
-            speed = 3.5
+            speed = 1.5
         elif front_distance <= 3.0 and front_distance > 1.5:
-            speed = 2.5
-        else: 
             speed = 1.0
+        else: 
+            speed = 0.5
         # print("speed:", speed)
 
         #Publish Drive message

@@ -5,6 +5,7 @@ colcon build
 1. ros2 launch f1tenth_gym_ros gym_bridge_launch.py
 
 Any order for these:
+    Add MarkerArray on rviz
 2. ros2 run pure_pursuit_pkg pure_pursuit
     Turn off 'markers' in MarkerArray on rviz
 

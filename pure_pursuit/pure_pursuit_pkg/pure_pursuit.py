@@ -140,7 +140,7 @@ class PurePursuit(Node):
         # TODO: publish drive message, don't forget to limit the steering angle.
         drive_msg = AckermannDriveStamped()
         drive_msg.drive.steering_angle = np.clip(steering_angle, -.1, .1)
-        drive_msg.drive.speed = 4.0  # Adjust speed as needed
+        drive_msg.drive.speed = 1.5  # Adjust speed as needed
         self.drive_publisher.publish(drive_msg)
         
 
