@@ -51,17 +51,18 @@ class SafetyNode(Node):
             else:
                 iTTC = ranges[i] / x
 
-                # 
-
             # Check if emergency braking is required
             if x > 0 and iTTC < brake_threshold: 
-                self.publish_brake()
+                self.publish_brake(speed=0.1)
                 self.get_logger().info(f'brake is {brake_threshold} and ittc is {iTTC}')
+            else:
+                self.publish_brake(speed)
+            
     
-    def publish_brake(self):
+    def publish_brake(self, speed):
         # Publishes brake command to stop vehicle
         new_msg = AckermannDriveStamped()
-        new_msg.drive.speed = 0.1
+        new_msg.drive.speed = speed
         self.publisher_.publish(new_msg) 
 
         # Used to show the vehicle is braking
