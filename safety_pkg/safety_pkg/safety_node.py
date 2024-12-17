@@ -39,7 +39,7 @@ class SafetyNode(Node):
         angle_increment = scan_msg.angle_increment
         speed = self.speed
 
-        brake_threshold = 0.5 # Tune this to best value through trial and error 
+        brake_threshold = 0.25 # Tune this to best value through trial and error 
 
         # Loop through each range reading to analyze potential collisions
         for i in range(num):
@@ -51,11 +51,12 @@ class SafetyNode(Node):
             else:
                 iTTC = ranges[i] / x
 
-                # self.get_logger().info(f'x: {x}, iTTC: {iTTC}, brake_threshold: {brake_threshold}')
+                # 
 
             # Check if emergency braking is required
             if x > 0 and iTTC < brake_threshold: 
                 self.publish_brake()
+                self.get_logger().info(f'brake is {brake_threshold} and ittc is {iTTC}')
     
     def publish_brake(self):
         # Publishes brake command to stop vehicle

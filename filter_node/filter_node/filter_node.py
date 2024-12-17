@@ -42,7 +42,10 @@ class FilterNode(Node):
         self.braking_msg = None
         self.gap_follow_msg = None
 
+        self.braking_speed = 0.0
+
         self.gap_follow_speed = 0.0
+        self.gap_follow_steering_angle = 0.0
 
     def pure_pursuit_callback(self, msg):
         self.pure_pursuit_msg = msg
@@ -50,17 +53,21 @@ class FilterNode(Node):
 
     def emergency_braking_callback(self, msg):
         self.braking_msg = msg
+        self.braking_speed = msg.drive.speed
         self.publish_drive_command()
 
     def gap_follow_callback(self, msg):
         self.gap_follow_msg = msg
         self.gap_follow_speed = msg.drive.speed
+        self.gap_follow_steering_angle = msg.drive.steering_angle
+
         self.publish_drive_command()
         
     def publish_drive_command(self):
         # Priority logic: Pure Pursuit > Gap Follow > Emergency Braking
-        if self.braking_msg is not None and self.gap_follow_speed < 1.0:
+        if self.braking_msg is not None and self.braking_speed < 1.0:
             self.get_logger().info('Emergency Braking is in control')
+            self.braking_msg
             self.drive_pub.publish(self.braking_msg)
 
         # If Gap Follow message is available and Pure Pursuit message is not
