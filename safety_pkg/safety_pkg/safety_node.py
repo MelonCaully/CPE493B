@@ -15,13 +15,17 @@ class SafetyNode(Node):
         super().__init__('safety_node')
 
         # Publisher to /drive topic
-        self.publisher_ = self.create_publisher(AckermannDriveStamped, 'drive', 10)
+        self.publisher_ = self.create_publisher(
+            AckermannDriveStamped, 
+            'safety_node/drive', 
+            10
+        )
 
         # Subscribers to /scan and /ego_racecar/odom topics
-        self.scan_subscription = self.create_subscription(LaserScan,'scan',self.scan_callback,10)
-        self.odom_subscription = self.create_subscription(Odometry,'ego_racecar/odom',self.odom_callback,10)
+        self.scan_subscription = self.create_subscription(LaserScan,'/scan',self.scan_callback,10)
+        self.odom_subscription = self.create_subscription(Odometry,'/ego_racecar/odom',self.odom_callback,10)
         
-        self.speed = 0. # Vehicle speed
+        self.speed = 1.0 # Vehicle speed
 
     def odom_callback(self, odom_msg):
         # Updates current speed from odometry message
@@ -35,7 +39,7 @@ class SafetyNode(Node):
         angle_increment = scan_msg.angle_increment
         speed = self.speed
 
-        brake_threshold = 1.0 # Tune this to best value through trial and error 
+        brake_threshold = 0.25 # Tune this to best value through trial and error 
 
         # Loop through each range reading to analyze potential collisions
         for i in range(num):
@@ -49,19 +53,24 @@ class SafetyNode(Node):
 
             # Check if emergency braking is required
             if x > 0 and iTTC < brake_threshold: 
-                self.publish_brake()
+                self.publish_brake(speed=0.1)
+                self.get_logger().info(f'brake is {brake_threshold} and ittc is {iTTC}')
+            else:
+                self.publish_brake(speed)
+            
     
-    def publish_brake(self):
+    def publish_brake(self, speed):
         # Publishes brake command to stop vehicle
         new_msg = AckermannDriveStamped()
-        new_msg.drive.speed = 0.0
+        new_msg.drive.speed = speed
         self.publisher_.publish(new_msg) 
 
         # Used to show the vehicle is braking
-        self.get_logger().info("EMERGENCY BRAKING!")
+        # self.get_logger().info("EMERGENCY BRAKING!")
 
 def main(args=None):
     rclpy.init(args=args)
+    print('Safety Node Initialized')
     safety_node = SafetyNode()
     rclpy.spin(safety_node)
     safety_node.destroy_node()

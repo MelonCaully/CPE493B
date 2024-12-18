@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import rclpy
 from rclpy.node import Node
 import math
@@ -15,13 +17,12 @@ class ReactiveFollowGap(Node):
         super().__init__('reactive_node')
         # Topics & Subs, Pubs
         lidarscan_topic = '/scan'
-        drive_topic = '/drive'
+        drive_topic = 'gap_follow/drive'
 
         # TODO: Subscribe to LIDAR
         self.lidar_subscriptions = self.create_subscription(LaserScan, lidarscan_topic, self.lidar_callback, 10)
         # TODO: Publish to drive
         self.publisher_ = self.create_publisher(AckermannDriveStamped, drive_topic, 10)
-        print("Node Initialized")
 
     def preprocess_lidar(self, ranges):
         """ Preprocess the LiDAR scan array. Expert implementation includes:
@@ -29,8 +30,8 @@ class ReactiveFollowGap(Node):
             2.Rejecting high values (eg. > 3m)
         """
         ranges = np.array(ranges)
-        smoothed_ranges = np.convolve(ranges, np.ones(5)/5, mode = 'valid')
-        proc_ranges = np.where(smoothed_ranges > 20, 5, smoothed_ranges)
+        smoothed_ranges = np.convolve(ranges, np.ones(10)/10, mode = 'valid')
+        proc_ranges = np.where(smoothed_ranges > 20, 10, smoothed_ranges)
         return proc_ranges
 
     def find_max_gap(self, free_space_ranges):
@@ -86,7 +87,7 @@ class ReactiveFollowGap(Node):
 
         angle_from_center = (best_point_index - total_points / 2) * angle_per_point
 
-        steering_angle = math.radians(angle_from_center) 
+        steering_angle = math.radians(angle_from_center)
 
         return steering_angle
 
@@ -94,14 +95,14 @@ class ReactiveFollowGap(Node):
         """ Process each LiDAR scan as per the Follow Gap algorithm & publish an AckermannDriveStamped Message
         """
         ranges = data.ranges
-        bubble_radius = 3
+        bubble_radius = 0.5
         
         # TODO:
         #Find closest point to LiDAR
         closest_point = min((r for r in ranges if r >= bubble_radius), default=float('inf'))
 
         if closest_point == float('inf'):
-            self.get_logger().warn('No valid points outside bubble radius')
+            # self.get_logger().warn('No valid points outside bubble radius')
             return
         
         proc_ranges = self.preprocess_lidar(ranges)
@@ -124,16 +125,16 @@ class ReactiveFollowGap(Node):
         right_distance = proc_ranges[right_index] if right_index < len(proc_ranges) else 0
 
         curvature = abs(left_distance - right_distance) / (left_distance + right_distance + 0.001)  # avoid division by zero
-        print("curvature: ", curvature)
-        print("front_distance: ", front_distance)
+        # print("curvature: ", curvature)
+        # print("front_distance: ", front_distance)
         
-        if front_distance > 6.0 and front_distance < 20.0:
-            speed = 6.0
-        elif front_distance <= 6.0 and front_distance > 2.7:
-            speed = 2.7
-        else: 
+        if front_distance > 2.5 and front_distance < 20.0:
+            speed = 1.5
+        elif front_distance <= 2.5 and front_distance > 1.5:
             speed = 1.0
-        print("speed:", speed)
+        else: 
+            speed = 0.5
+        # print("speed:", speed)
 
         #Publish Drive message
         drive_msg = AckermannDriveStamped()
@@ -141,12 +142,12 @@ class ReactiveFollowGap(Node):
         drive_msg.header.frame_id = "base_link"
         drive_msg.drive.speed = speed
         drive_msg.drive.steering_angle = self.calculate_steering_angle(best_point_index, len(ranges))
-
         self.publisher_.publish(drive_msg)
+        
 
 def main(args=None):
     rclpy.init(args=args)
-    print("WallFollow Initialized")
+    print("Gap Follow Initialized")
     reactive_node = ReactiveFollowGap()
     rclpy.spin(reactive_node)
 

@@ -2,207 +2,158 @@
 
 import rclpy
 from rclpy.node import Node
-from ackermann_msgs.msg import AckermannDriveStamped
-from geometry_msgs.msg import Point
-from nav_msgs.msg import Odometry
-from visualization_msgs.msg import Marker
-import csv
-import numpy as np
 
-set_lookahead = 1.3
+import numpy as np
+import csv
+import os
+from ackermann_msgs.msg import AckermannDriveStamped, AckermannDrive
+from nav_msgs.msg import Odometry
+from visualization_msgs.msg import Marker, MarkerArray
+from std_msgs.msg import ColorRGBA
+
+# TODO CHECK: include needed ROS msg type headers and libraries
 
 class PurePursuit(Node):
+    """ 
+    Implement Pure Pursuit on the car
+    This is just a template, you are free to implement your own node!
+    """
     def __init__(self):
         super().__init__('pure_pursuit_node')
+        # TODO: create ROS subscribers and publishers
+        # Create a publisher for driving commands
+        self.drive_publisher = self.create_publisher(
+            AckermannDriveStamped,
+            'pure_pursuit/drive',
+            10
+        )
 
-        # Used to publish point creation
-        self.pub_env_viz = self.create_publisher(Marker, '/env_viz', 10)
-        self.pub_dynamic_viz = self.create_publisher(Marker, '/dynamic_viz', 10)
+        # Create a subscriber to Pose data
+        self.subscription_odom = self.create_subscription(
+            Odometry, 
+            '/ego_racecar/odom', 
+            self.odom_callback, 
+            10
+        )
         
-        self.pub_drive = self.create_publisher(AckermannDriveStamped, '/drive', 10)
-        self.sub_odom = self.create_subscription(Odometry, '/ego_racecar/odom', self.pose_callback, 10)
+        # Create a publisher to Marker data
+        self.marker_publisher = self.create_publisher(
+            MarkerArray,
+            '/visualization_marker_array',
+            10
+        )
 
-        self.x_coordinates = []
-        self.y_coordinates = []
-        self.orien = []
-        self.marker = Marker()
-        self.marker.header.frame_id = "map"
-        self.marker.id = 0
+        self.min_lookahead = 1.25
+        self.max_lookahead = 8
+        self.current_waypoint_idx = 0
+        self.markers = self.load_markers(csv_path=os.getcwd()+'/src/CPE493B/pure_pursuit/data.csv')
+        self.markers = list(np.float_(self.markers))
+        self.publish_markers()        
 
-        # Visualization for way points
-        # Marker set to points
-        self.marker.type = Marker.POINTS
-        self.marker.action = Marker.ADD
-        self.marker.pose.position.x = 0.0
-        self.marker.pose.position.y = 0.0
-        self.marker.pose.position.z = 0.0
-        self.marker.pose.orientation.x = 0.0
-        self.marker.pose.orientation.y = 0.0
-        self.marker.pose.orientation.z = 0.0
-        self.marker.pose.orientation.w = 1.0
-
-        # Small size
-        self.marker.scale.x = 0.1
-        self.marker.scale.y = 0.1
-
-        # Green points
-        self.marker.color.a = 0.0
-        self.marker.color.r = 0.0
-        self.marker.color.g = 1.0
-        self.marker.color.b = 0.0
-
-
-        path = '/home/mjdolan03/pure_pursuit_ws/src/pure_pursuit_pkg/pure_pursuit_pkg/data.csv'
-        with open(path, 'r') as file:
-            reader = csv.reader(file)
-            # Iterates through rows of file
+    def load_markers(self, csv_path):
+        markers = [] 
+        with open(csv_path, 'r') as csv_file:
+            reader = csv.reader(csv_file)
             for row in reader:
-                # Converts the 3 string values to floating point numbers
-                x, y, orien = map(float, row)
+                markers.append([row[0], row[1], row[2]])
 
-                # Adds the x, y, and orien values to their corresponding lists
-                self.x_coordinates.append(x)
-                self.y_coordinates.append(y)
-                self.orien.append(orien)
+        return markers
+    
+    def publish_markers(self):
+        marker_array = MarkerArray()
+        for idx, (x, y, z) in enumerate(self.markers):
+            marker = Marker()
+            marker.header.frame_id = "map"
+            marker.header.stamp = self.get_clock().now().to_msg()
+            marker.ns = 'markers'
+            marker.id = idx
+            marker.type = Marker.SPHERE
+            marker.action = Marker.ADD
+            marker.pose.position.x = float(x)
+            marker.pose.position.y = float(y)
+            marker.pose.position.z = 0.0
+            marker.scale.x = 0.1
+            marker.scale.y = 0.1
+            marker.scale.z = 0.1
+            marker.color = ColorRGBA(r=0.0, g=1.0, b=0.0, a=1.0)
+            marker_array.markers.append(marker)
+        self.marker_publisher.publish(marker_array)
+        self.get_logger().info('Array Published')
 
-                # Point object for visualization
-                point = Point()
-                point.x = x
-                point.y = y
-                # 2-D
-                point.z = 0.0
+    
+    def find_goal_waypoint(self, curr_x, curr_y):
+        # Given a list of waypoints
+        for idx, i in enumerate(self.markers[self.current_waypoint_idx:], start=self.current_waypoint_idx + 1):
+            # if at the end of the markers, go to the beginning and keep looking
+            if idx >= len(self.markers) - 1: self.current_waypoint_idx = idx = 0 
+            else: 
+                # Get first distance of the markers from current position
+                distance = np.sqrt((self.markers[idx][0] - curr_x)**2 + (self.markers[idx][1] - curr_y)**2)
                 
-                # Adds the point object to points list for the marker so it can be visualized
-                self.marker.points.append(point)
+                # Go up the waypoint until you get the one that is one Looahead Dist away from car
+                if distance > self.min_lookahead and distance < self.max_lookahead:
+                    return idx
+                
+        return 0
+    
+    def find_closest_waypoint(self, curr_x, curr_y):
+        min_distance = float('inf')  # Start with an infinitely large distance
+        closest_idx = -1  # Initialize with an invalid index
 
-        # Initialize values
-        self.flag = False
-        self.curr_index = 0
-        self.x_current = 0.0
-        self.y_current = 0.0
-        self.orien_current = 0.0
-        self.angle = 0.0
+        for idx, (wp_x, wp_y, _) in enumerate(self.markers):
+            # Calculate the distance from current pos to next closest waypoint
+            distance = np.sqrt((wp_x - curr_x) ** 2 + (wp_y - curr_y) ** 2)
+            
+            # Update if this waypoint is closer than the previously found one
+            if distance < min_distance:
+                min_distance = distance
+                closest_idx = idx
 
-    def pose_callback(self, odometry_info):
-        # Current x and y coordinates of car
-        self.x_current = odometry_info.pose.pose.position.x
-        self.y_current = odometry_info.pose.pose.position.y
+        # return once found closest index
+        return closest_idx
 
-        # w * z + x * y
-        sin_calc = odometry_info.pose.pose.orientation.w * odometry_info.pose.pose.orientation.z + odometry_info.pose.pose.orientation.x * odometry_info.pose.pose.orientation.y
+
+    def odom_callback(self, odom_msg):
+        # Current position and Orientation of the car
+        curr_x, curr_y, orientation = float(odom_msg.pose.pose.position.x), float(odom_msg.pose.pose.position.y), odom_msg.pose.pose.orientation
+
+        # Calculating yaw of theta, where the car is going
+        theta = np.arctan2(2.0 * (orientation.w * orientation.z + orientation.x * orientation.y), 1.0 - 2.0 * (orientation.y**2 + orientation.z**2))
+
+        # TODO: find the current waypoint to track using methods mentioned in lecture
+        self.current_waypoint_idx = self.find_closest_waypoint(curr_x, curr_y)
+        goal_idx = self.find_goal_waypoint(curr_x, curr_y)
+        goal_x, goal_y = self.markers[goal_idx][0], self.markers[goal_idx][1]
+
+        # TODO: transform goal point to vehicle frame of reference
+        dx = goal_x - curr_x  
+        dy = goal_y - curr_y
+
+        local_x = dx * np.cos(-theta) - dy * np.sin(-theta)
+        local_y = dx * np.sin(-theta) + dy * np.cos(-theta)
+        goal_dist = (local_x**2 + local_y**2)
         
-        # y * y + z * z
-        cos_calc = odometry_info.pose.pose.orientation.y * odometry_info.pose.pose.orientation.y + odometry_info.pose.pose.orientation.z * odometry_info.pose.pose.orientation.z
+        # TODO: calculate curvature/steering angle
+        curvature = (2 * local_y) / goal_dist
+        steering_angle = np.arctan(curvature)
 
-        # Converting quaternion to yaw: quaternion form (w, x, y, z)
-        yaw_sin = 2.0 * sin_calc
-        yaw_cos = 1.0 - 2.0 * cos_calc
-        # Computes orientation based on calculated yaw
-        self.orien_current = np.arctan2(yaw_sin, yaw_cos)
-
-        # Runs through this portion to set flag to true for finding close waypoint
-        if self.flag == False:
-            close = 75.0
-            for i in range(len(self.x_coordinates)):
-                # Calculates current distance: (x2 - x1)^2 + (y2 - y1)^2
-                curr_distance = (self.x_coordinates[i] - self.x_current) ** 2 + (self.y_coordinates[i] - self.y_current) ** 2
-                # If current distance is closer than shortest distance
-                if curr_distance < close:
-                    # Sets shortest distance to current distance
-                    close = curr_distance
-                    # Sets current index as the corresponding shortest distance index
-                    self.curr_index = i
-            self.flag = True
-        # Iterates through current indexes while distance is less than the lookahead distance set above
-        # Current index represents target point and this makes sure its far enough ahead of car in terms of distance
-        # Will increment target point until while conditional is false: target point distance > lookahead distance
-        while True:
-            target_distance = np.sqrt((self.x_coordinates[self.curr_index] - self.x_current) ** 2 +(self.y_coordinates[self.curr_index] - self.y_current) ** 2)
-            if target_distance > set_lookahead:
-                break 
-            # Increments and accounts for wrap around
-            self.curr_index = (self.curr_index + 1) % len(self.x_coordinates)
-
-
-        # Calculates lookahead angle based on current position to target point
-        lookahead_ang = np.arctan2(self.y_coordinates[self.curr_index] - self.y_current, self.x_coordinates[self.curr_index] - self.x_current)
-
-        # Calculates distance between current position and target point
-        # Target point is x/y-coords indexed to target point and current is subtracted for distance calculation
-        calc_distance = np.sqrt((self.x_coordinates[self.curr_index] - self.x_current) ** 2 + (self.y_coordinates[self.curr_index] - self.y_current) ** 2)
-
-        # For steering angle calculation: how far car is from ideal y orientation to target (y-axis perpindicular to car)
-        y_val = calc_distance * np.sin(lookahead_ang - self.orien_current)
-
-
-        # Steering angle given formula: 2 * abs_y / L^2
-        self.angle = 2.0 * y_val / (calc_distance ** 2)
+        # TODO: publish drive message, don't forget to limit the steering angle.
+        drive_msg = AckermannDriveStamped()
+        drive_msg.drive.steering_angle = np.clip(steering_angle, -.1, .1)
+        drive_msg.drive.speed = 2.0  # Adjust speed as needed
+        self.drive_publisher.publish(drive_msg)
         
-        # Visualization marker for waypoints I'm picking
-        point = Point()
-        waypoint_mark = Marker()
-        # Sets target points
-        point.x = self.x_coordinates[self.curr_index]
-        point.y = self.y_coordinates[self.curr_index]
-        # 2-D
-        point.z = 0.0
-        # Adds corresponding point to marker points list
-        waypoint_mark.points.append(point)
-        waypoint_mark.header.frame_id = "map"
-        waypoint_mark.id = 0
 
-        waypoint_mark.type = Marker.POINTS
-        waypoint_mark.action = Marker.ADD
-
-        # Marker actions correspond to actual coordinate point values
-        waypoint_mark.pose.position.x = 0.0
-        waypoint_mark.pose.position.y = 0.0
-        waypoint_mark.pose.position.z = 0.0
-
-        # Default
-        waypoint_mark.pose.orientation.x = 0.0
-        waypoint_mark.pose.orientation.y = 0.0
-        waypoint_mark.pose.orientation.z = 0.0
-        waypoint_mark.pose.orientation.w = 1.0
-
-        # Point sizes
-        waypoint_mark.scale.x = 0.4
-        waypoint_mark.scale.y = 0.4
-
-        # Purple points
-        waypoint_mark.color.a = 1.0
-        waypoint_mark.color.r = 1.0
-        waypoint_mark.color.g = 0.0
-        waypoint_mark.color.b = 1.0
-
-        self.reactive_control()
-        # Pass marker values for visualization
-        self.pub_env_viz.publish(self.marker)
-        self.pub_dynamic_viz.publish(waypoint_mark)
-
-    def reactive_control(self):
-        ackermann_drive_result = AckermannDriveStamped()
-        ackermann_drive_result.drive.steering_angle = self.angle
-        degree_conversion = np.degrees(abs(self.angle))
-        # Sharp turn case
-        if degree_conversion > 25:
-            # Reduce speed
-            ackermann_drive_result.drive.speed = 0.7 
-        elif degree_conversion > 8:
-            ackermann_drive_result.drive.speed = 1.25 
-        else:
-            # No existing turn or small turn, fast speed
-            ackermann_drive_result.drive.speed = 2.0  
-        self.pub_drive.publish(ackermann_drive_result)
 
 def main(args=None):
     rclpy.init(args=args)
     print("PurePursuit Initialized")
     pure_pursuit_node = PurePursuit()
     rclpy.spin(pure_pursuit_node)
+
     pure_pursuit_node.destroy_node()
     rclpy.shutdown()
 
+
 if __name__ == '__main__':
     main()
-

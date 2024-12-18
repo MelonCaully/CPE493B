@@ -1,6 +1,6 @@
 from setuptools import setup
 
-package_name = 'wallfllw_pkg'
+package_name = 'filter_node'
 
 setup(
     name=package_name,
@@ -20,7 +20,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'wallfllw_node = wallfllw_pkg.wallfllw_node:main'
+            'filter_node = filter_node.filter_node:main'
         ],
     },
 )
